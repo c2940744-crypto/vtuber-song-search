@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VTuber セットリスト検索</title>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
@@ -1005,7 +1004,6 @@ async function loadChannelClickCounts() {
 }
 
 let clickCounts = {}; // 全域快取，同步後更新
-let romajiCache = new Map(); // song原文 → romaji 預先轉換快取
 
 let channelTotalClicks = {}; // { channelId: totalClicks } from Firebase
 
@@ -1018,77 +1016,12 @@ async function refreshClickCounts() {
 // KUROMOJI & ROMAJI
 // ============================================================
 
-let kuromojiTokenizer = null;
 
 // Initialise kuromoji in background (dict loads ~2s)
-// kuromoji 背景載入，不阻塞頁面，載入完才啟用羅馬字搜尋
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    if (typeof kuromoji === 'undefined') {
-      console.warn('[kuromoji] library not loaded');
-      return;
-    }
-    console.log('[kuromoji] starting dict load...');
-    kuromoji.builder({ dicPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict' })
-      .build((err, tokenizer) => {
-        if (err) {
-          console.error('[kuromoji] build error:', err);
-        } else {
-          kuromojiTokenizer = tokenizer;
-          console.log('[kuromoji] ready! test:', songToRomaji('夜に駆ける'));
-          buildRomajiCache();
-        }
-      });
-  }, 500);
-});
+// kuromoji 已移除：romaji 資料存於第9欄，不需要即時轉換
 
-const ROMAJI_MAP = {
-  'あ':'a','い':'i','う':'u','え':'e','お':'o',
-  'か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko',
-  'さ':'sa','し':'shi','す':'su','せ':'se','そ':'so',
-  'た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to',
-  'な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no',
-  'は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho',
-  'ま':'ma','み':'mi','む':'mu','め':'me','も':'mo',
-  'や':'ya','ゆ':'yu','よ':'yo',
-  'ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro',
-  'わ':'wa','を':'wo','ん':'n',
-  'が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go',
-  'ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo',
-  'だ':'da','ぢ':'di','づ':'du','で':'de','ど':'do',
-  'ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo',
-  'ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po',
-  'きゃ':'kya','きゅ':'kyu','きょ':'kyo',
-  'しゃ':'sha','しゅ':'shu','しょ':'sho',
-  'ちゃ':'cha','ちゅ':'chu','ちょ':'cho',
-  'にゃ':'nya','にゅ':'nyu','にょ':'nyo',
-  'ひゃ':'hya','ひゅ':'hyu','ひょ':'hyo',
-  'みゃ':'mya','みゅ':'myu','みょ':'myo',
-  'りゃ':'rya','りゅ':'ryu','りょ':'ryo',
-  'ぎゃ':'gya','ぎゅ':'gyu','ぎょ':'gyo',
-  'じゃ':'ja','じゅ':'ju','じょ':'jo',
-  'びゃ':'bya','びゅ':'byu','びょ':'byo',
-  'ぴゃ':'pya','ぴゅ':'pyu','ぴょ':'pyo',
-};
 
-function hiraToRomaji(hira) {
-  let result = '';
-  let i = 0;
-  while (i < hira.length) {
-    // Try 2-char first (compound)
-    const two = ROMAJI_MAP[hira[i] + (hira[i+1] || '')];
-    if (two) { result += two; i += 2; continue; }
-    const one = ROMAJI_MAP[hira[i]];
-    if (one) { result += one; i++; continue; }
-    result += hira[i]; i++;
-  }
-  return result;
-}
 
-// Convert katakana to hiragana
-function kataToHira(str) {
-  return str.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
-}
 
 // Convert a song title to romaji using kuromoji readings
 function songToRomaji(title) {
@@ -1142,21 +1075,7 @@ function romajiMatch(query, song) {
   return idx;
 }
 
-// 全歌名をローマ字に事前変換してキャッシュ
-function buildRomajiCache() {
-  romajiCache.clear();
-  const allSongs = new Set();
-  for (const line of setlistLines) {
-    const parts = line.split(' | ');
-    if (parts.length === 7) allSongs.add(parts[6].trim());
-  }
-  console.log(`[kuromoji] building romaji cache for ${allSongs.size} unique songs...`);
-  for (const song of allSongs) {
-    const r = songToRomaji(song);
-    if (r) romajiCache.set(song, r);
-  }
-  console.log('[kuromoji] romaji cache built!');
-}
+
 
 // ============================================================
 // SCORING
@@ -1489,10 +1408,7 @@ async function syncData() {
 
     // Parse setlist & cover lines (keep in memory only)
     setlistLines = setlistRaw.split('\n').filter(l => l.trim());
-    // 9欄フォーマットにはromaji欄があるのでkuromojiキャッシュは不要
-    // 7欄の旧データがある場合のみ実行
-    const hasOldFormat = setlistLines.some(l => l.split(' | ').length === 7);
-    if (hasOldFormat && kuromojiTokenizer) buildRomajiCache();
+
     coverLines   = coverRaw.split('\n').filter(l => l.trim());
 
     // Only store vtuberData (small) in localStorage
@@ -1631,7 +1547,7 @@ function doSearch() {
         // 文字匹配
         const isTextMatch = cleanText(song).includes(queryClean);
 
-        // 羅馬拼音匹配：文字匹配和羅馬字匹配都跑，取最佳
+        // 羅馬拼音匹配：直接用第9欄的 romaji
         let rIdx = -1;
         if (romaji && romaji.indexOf(queryClean) !== -1) {
           const ri = romaji.indexOf(queryClean);
@@ -1639,8 +1555,6 @@ function doSearch() {
           if (!(before && /[a-z]/i.test(before)) && !(after && /[a-z]/i.test(after))) {
             rIdx = ri;
           }
-        } else if (!isTextMatch) {
-          rIdx = romajiMatch(query, song);
         }
 
         if (!isTextMatch && rIdx === -1) continue;
