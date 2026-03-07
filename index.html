@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VTuber セットリスト検索</title>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
   :root {
     --bg: #0a0a12;
@@ -587,6 +590,242 @@
   }
   .progress-label span { color: var(--accent); }
 
+
+  /* Search mode switcher */
+  .mode-switcher {
+    display: flex;
+    gap: 6px;
+    background: var(--surface);
+    padding: 5px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .mode-btn {
+    flex: 1;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+  .mode-btn.active {
+    background: linear-gradient(135deg, #7c3aed, #6366f1);
+    color: white;
+    box-shadow: 0 2px 12px rgba(124, 58, 237, 0.4);
+  }
+  .mode-btn:hover:not(.active) {
+    color: var(--text);
+    background: var(--border);
+  }
+
+  /* Cover badge on song items */
+  .cover-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 100px;
+    background: linear-gradient(135deg, rgba(236,72,153,0.2), rgba(192,132,252,0.2));
+    border: 1px solid rgba(236,72,153,0.4);
+    color: #f0abfc;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .setlist-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 100px;
+    background: rgba(129,140,248,0.15);
+    border: 1px solid rgba(129,140,248,0.3);
+    color: var(--accent3);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  /* Cover group header highlight */
+  .channel-group.is-cover .channel-header {
+    background: linear-gradient(135deg, rgba(236,72,153,0.08), rgba(192,132,252,0.08));
+    border-color: rgba(236,72,153,0.25);
+  }
+  .channel-group.is-cover .channel-count-badge {
+    background: rgba(236,72,153,0.15);
+    border-color: rgba(236,72,153,0.3);
+    color: #f0abfc;
+  }
+
+
+  /* Romaji match badge */
+  .romaji-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 100px;
+    background: rgba(100,116,139,0.15);
+    border: 1px solid rgba(100,116,139,0.3);
+    color: var(--text-faint);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+
+  /* Help modal */
+  .help-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .help-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 10px var(--glow);
+  }
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    animation: fadeSlideIn 0.25s ease forwards;
+  }
+  .modal::-webkit-scrollbar { width: 4px; }
+  .modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 28px 16px;
+    position: sticky;
+    top: 0;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    z-index: 1;
+  }
+  .modal-title {
+    font-size: 16px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #f0abfc, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .modal-close {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .modal-close:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-body {
+    padding: 20px 28px 28px;
+  }
+  .help-section {
+    margin-bottom: 22px;
+  }
+  .help-section-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .help-item {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .help-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+  }
+  .help-item strong { color: var(--text); }
+
+
+  .song-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+
+
+  .no-result-tips {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+    max-width: 380px;
+  }
+  .no-result-tip {
+    font-size: 13px;
+    color: var(--text-faint);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    line-height: 1.5;
+  }
+
+
+  .song-hint {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 5px;
+    padding-left: 4px;
+  }
+
   /* Responsive */
   @media (max-width: 540px) {
     .panel { padding: 20px 16px; }
@@ -605,10 +844,13 @@
       <div class="badge" id="badge">VTuber Search</div>
       <h1 id="h1">🎤 VTuber セットリスト検索</h1>
     </div>
-    <div class="lang-switcher">
-      <button class="lang-btn active" onclick="setLang('ja')">日本語</button>
-      <button class="lang-btn" onclick="setLang('zh')">繁體中文</button>
-      <button class="lang-btn" onclick="setLang('en')">English</button>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="help-btn" onclick="toggleHelp()" title="使い方">?</button>
+      <div class="lang-switcher">
+        <button class="lang-btn active" onclick="setLang('ja')">日本語</button>
+        <button class="lang-btn" onclick="setLang('zh')">繁體中文</button>
+        <button class="lang-btn" onclick="setLang('en')">English</button>
+      </div>
     </div>
   </div>
 
@@ -620,13 +862,21 @@
   <!-- Main panel -->
   <div class="panel">
 
+      <!-- Search mode -->
+      <div class="mode-switcher" id="modeSwitcher">
+        <button class="mode-btn active" id="modeAll"    onclick="setMode('all')">🎵 すべて</button>
+        <button class="mode-btn"        id="modeSetlist" onclick="setMode('setlist')">🎤 歌枠</button>
+        <button class="mode-btn"        id="modeCover"   onclick="setMode('cover')">🎵 Cover</button>
+      </div>
+
     <!-- Song search -->
     <div class="field-group">
       <label id="lbl-song">曲名</label>
       <div class="input-wrap">
         <span class="input-icon">♪</span>
-        <input type="text" id="songInput" placeholder="e.g. 夜に駆ける" oninput="onSongInput()" onkeydown="if(e.key==='Enter')doSearch()">
+        <input type="text" id="songInput" placeholder="e.g. 夜に駆ける" oninput="onSongInput()" onkeydown="if(event.key==='Enter')doSearch()">
       </div>
+      <div class="song-hint" id="songHint"></div>
     </div>
 
     <hr class="divider">
@@ -680,6 +930,18 @@
     <div id="resultsBody"></div>
   </div>
 
+
+  <!-- Help Modal -->
+  <div class="modal-overlay" id="helpModal" onclick="if(event.target===this)toggleHelp()">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="helpTitle">使い方ガイド</div>
+        <button class="modal-close" onclick="toggleHelp()">×</button>
+      </div>
+      <div class="modal-body" id="helpBody"></div>
+    </div>
+  </div>
+
 </div><!-- /wrapper -->
 
 <script>
@@ -689,11 +951,242 @@
 
 const DROPBOX_SETLIST = "https://media.githubusercontent.com/media/c2940744-crypto/gitissofkinghard/refs/heads/main/setlist_cache.txt";
 const DROPBOX_VTUBERS = "https://media.githubusercontent.com/media/c2940744-crypto/gitissofkinghard/refs/heads/main/vtuber_list.txt";
-
+const DROPBOX_COVER   = "https://media.githubusercontent.com/media/c2940744-crypto/gitissofkinghard/refs/heads/main/cover_cache.txt";
 
 let vtuberData = {};   // { channelId: { name, url } }
-let setlistLines = []; // raw lines from cache
-let selectedChannelId = "ALL";
+let setlistLines = []; // raw lines from setlist_cache
+let coverLines   = []; // raw lines from cover_cache
+let selectedChannelIdss = new Set(["ALL"]); // 多選，含 "ALL" 表示全選
+let searchMode = "all"; // "all" | "setlist" | "cover"
+
+function setMode(mode) {
+  searchMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById({ all: 'modeAll', setlist: 'modeSetlist', cover: 'modeCover' }[mode]).classList.add('active');
+}
+
+
+
+// ============================================================
+// FIREBASE
+// ============================================================
+
+const FIREBASE_CONFIG = {
+  databaseURL: "https://vtuber-search-c1a7b-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.database();
+
+// 點擊計數：key = videoId
+function recordClick(videoId, channelId) {
+  if (!videoId) return;
+  db.ref('clicks/' + videoId).transaction(val => (val || 0) + 1);
+  if (channelId) db.ref('channelClicks/' + channelId).transaction(val => (val || 0) + 1);
+}
+
+// 載入所有點擊數，回傳 { videoId: count }
+async function loadClickCounts() {
+  try {
+    const snap = await db.ref('clicks').get();
+    return snap.exists() ? snap.val() : {};
+  } catch(e) {
+    return {};
+  }
+}
+
+async function loadChannelClickCounts() {
+  try {
+    const snap = await db.ref('channelClicks').get();
+    return snap.exists() ? snap.val() : {};
+  } catch(e) {
+    return {};
+  }
+}
+
+let clickCounts = {}; // 全域快取，同步後更新
+let romajiCache = new Map(); // song原文 → romaji 預先轉換快取
+
+let channelTotalClicks = {}; // { channelId: totalClicks } from Firebase
+
+async function refreshClickCounts() {
+  clickCounts = await loadClickCounts();
+  channelTotalClicks = await loadChannelClickCounts();
+}
+
+// ============================================================
+// KUROMOJI & ROMAJI
+// ============================================================
+
+let kuromojiTokenizer = null;
+
+// Initialise kuromoji in background (dict loads ~2s)
+// kuromoji 背景載入，不阻塞頁面，載入完才啟用羅馬字搜尋
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (typeof kuromoji === 'undefined') {
+      console.warn('[kuromoji] library not loaded');
+      return;
+    }
+    console.log('[kuromoji] starting dict load...');
+    kuromoji.builder({ dicPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict' })
+      .build((err, tokenizer) => {
+        if (err) {
+          console.error('[kuromoji] build error:', err);
+        } else {
+          kuromojiTokenizer = tokenizer;
+          console.log('[kuromoji] ready! test:', songToRomaji('夜に駆ける'));
+          buildRomajiCache();
+        }
+      });
+  }, 500);
+});
+
+const ROMAJI_MAP = {
+  'あ':'a','い':'i','う':'u','え':'e','お':'o',
+  'か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko',
+  'さ':'sa','し':'shi','す':'su','せ':'se','そ':'so',
+  'た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to',
+  'な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no',
+  'は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho',
+  'ま':'ma','み':'mi','む':'mu','め':'me','も':'mo',
+  'や':'ya','ゆ':'yu','よ':'yo',
+  'ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro',
+  'わ':'wa','を':'wo','ん':'n',
+  'が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go',
+  'ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo',
+  'だ':'da','ぢ':'di','づ':'du','で':'de','ど':'do',
+  'ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo',
+  'ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po',
+  'きゃ':'kya','きゅ':'kyu','きょ':'kyo',
+  'しゃ':'sha','しゅ':'shu','しょ':'sho',
+  'ちゃ':'cha','ちゅ':'chu','ちょ':'cho',
+  'にゃ':'nya','にゅ':'nyu','にょ':'nyo',
+  'ひゃ':'hya','ひゅ':'hyu','ひょ':'hyo',
+  'みゃ':'mya','みゅ':'myu','みょ':'myo',
+  'りゃ':'rya','りゅ':'ryu','りょ':'ryo',
+  'ぎゃ':'gya','ぎゅ':'gyu','ぎょ':'gyo',
+  'じゃ':'ja','じゅ':'ju','じょ':'jo',
+  'びゃ':'bya','びゅ':'byu','びょ':'byo',
+  'ぴゃ':'pya','ぴゅ':'pyu','ぴょ':'pyo',
+};
+
+function hiraToRomaji(hira) {
+  let result = '';
+  let i = 0;
+  while (i < hira.length) {
+    // Try 2-char first (compound)
+    const two = ROMAJI_MAP[hira[i] + (hira[i+1] || '')];
+    if (two) { result += two; i += 2; continue; }
+    const one = ROMAJI_MAP[hira[i]];
+    if (one) { result += one; i++; continue; }
+    result += hira[i]; i++;
+  }
+  return result;
+}
+
+// Convert katakana to hiragana
+function kataToHira(str) {
+  return str.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+
+// Convert a song title to romaji using kuromoji readings
+function songToRomaji(title) {
+  if (!kuromojiTokenizer) return null;
+  try {
+    const tokens = kuromojiTokenizer.tokenize(title);
+    return tokens.map(t => {
+      const reading = t.reading || t.surface_form;
+      return hiraToRomaji(kataToHira(reading));
+    }).join('').toLowerCase();
+  } catch(e) {
+    return null;
+  }
+}
+
+// Check if query (romaji) matches song title via kuromoji
+// Returns match index in romaji string, or -1 if no match
+// Strict: no English letters before/after match in ORIGINAL title region
+function romajiMatch(query, song) {
+  if (!kuromojiTokenizer) return -1;
+  const q = query.toLowerCase();
+
+  // キャッシュから取得（なければリアルタイム変換）
+  let romajiStr = romajiCache.get(song);
+  if (!romajiStr) {
+    // キャッシュにない場合はセグメント方式でリアルタイム変換
+    let tokens;
+    try { tokens = kuromojiTokenizer.tokenize(song); }
+    catch(e) { return -1; }
+    const segments = tokens.map(t => {
+      const surface = t.surface_form;
+      const hasJP = /[\u3040-\u30ff\u4e00-\u9fff]/.test(surface);
+      if (!hasJP) return null;
+      const reading = t.reading || surface;
+      return hiraToRomaji(kataToHira(reading)).toLowerCase();
+    }).filter(Boolean);
+    romajiStr = segments.join('');
+    if (romajiStr) romajiCache.set(song, romajiStr);
+  }
+
+  if (!romajiStr) return -1;
+  const idx = romajiStr.indexOf(q);
+  if (idx === -1) return -1;
+
+  // 前後に英字がないか確認
+  const before = romajiStr[idx - 1];
+  const after  = romajiStr[idx + q.length];
+  if (before && /[a-z]/i.test(before)) return -1;
+  if (after  && /[a-z]/i.test(after))  return -1;
+
+  return idx;
+}
+
+// 全歌名をローマ字に事前変換してキャッシュ
+function buildRomajiCache() {
+  romajiCache.clear();
+  const allSongs = new Set();
+  for (const line of setlistLines) {
+    const parts = line.split(' | ');
+    if (parts.length === 7) allSongs.add(parts[6].trim());
+  }
+  console.log(`[kuromoji] building romaji cache for ${allSongs.size} unique songs...`);
+  for (const song of allSongs) {
+    const r = songToRomaji(song);
+    if (r) romajiCache.set(song, r);
+  }
+  console.log('[kuromoji] romaji cache built!');
+}
+
+// ============================================================
+// SCORING
+// ============================================================
+
+// Score a setlist result for sorting (lower = better rank)
+// Returns { tier, pos }
+// tier 1 = exact word boundary match
+// tier 2 = substring match
+// tier 3 = romaji match
+function scoreResult(query, song) {
+  const queryClean = cleanText(query);
+  const songLower  = song.toLowerCase();
+
+  // Find raw match position in original (un-cleaned) song string
+  const rawIdx = songLower.indexOf(queryClean);
+
+  if (rawIdx !== -1) {
+    // Check word boundary: chars before/after must NOT be \w / CJK / kana
+    const wordCharsRe = /[\w\u4e00-\u9fff\u3040-\u30ff]/;
+    const charBefore = song[rawIdx - 1];
+    const charAfter  = song[rawIdx + queryClean.length];
+    const boundaryOk = (!charBefore || !wordCharsRe.test(charBefore)) &&
+                       (!charAfter  || !wordCharsRe.test(charAfter));
+    if (boundaryOk) return { tier: 1, pos: rawIdx };
+    return { tier: 2, pos: rawIdx };
+  }
+
+  return { tier: 2, pos: 9999 };
+}
 
 // ============================================================
 // LANG
@@ -703,12 +1196,20 @@ const LANG = {
     badge: "VTuber Search",
     title: "🎤 VTuber セットリスト検索",
     lblSong: "曲名",
+    songHint: "※ 歌名の表記をご確認ください",
     lblChannel: "チャンネル絞り込み",
     searchBtn: "🔍 検索",
     listBtn: "📋 チャンネルリスト",
     allVtubers: "🎵 全チャンネル",
     searching: "検索中...",
     noResult: "😢 キャッシュに曲が見つかりませんでした。",
+    noResultTips: [
+      "🔍 検索ワードを短くしてみてください（例:「夜に駆ける」→「夜に」）",
+      "✏️ 曲名の表記を確認してください（漢字・カタカナ・スペルなど）",
+      "🎛️ 検索モードが絞られていませんか？「すべて」で試してみてください",
+      "🔤 ローマ字で検索することもできます（例: yorunikakeru）",
+      "🔄 データが古い可能性があります。クラウド同期を試してみてください",
+    ],
     totalResults: (c, ch) => `${c} 件 / ${ch} チャンネル`,
     syncLabel: "クラウド同期",
     syncing: "同期中...",
@@ -716,17 +1217,49 @@ const LANG = {
     syncFail: "同期失敗",
     resultsTitle: "検索結果",
     channelListTitle: "チャンネルリスト",
+    modeAll: "🎵 すべて",
+    modeSetlist: "🎤 歌枠",
+    modeCover: "🎵 Cover",
+    helpTitle: "使い方ガイド",
+    helpContent: [
+      { section: "🔍 基本的な使い方", items: [
+        { icon: "1️⃣", text: "<strong>曲名を入力</strong>して検索ボタンを押すか Enter キーで検索できます。" },
+        { icon: "2️⃣", text: "結果に表示された曲名をクリックすると、<strong>その曲の部分から YouTube が開きます</strong>（歌枠のみ）。" },
+        { icon: "3️⃣", text: "<strong>クラウド同期</strong>ボタンで最新データを取得できます。初回は自動で同期されます。" },
+      ]},
+      { section: "🎛️ 検索モード", items: [
+        { icon: "🎵", text: "<strong>すべて</strong>：歌枠と Cover の両方を検索。Cover が上位に表示されます。" },
+        { icon: "🎤", text: "<strong>歌枠</strong>：ライブ配信の歌枠のみ検索します。" },
+        { icon: "🎵", text: "<strong>Cover</strong>：カバー動画のみ検索します。" },
+      ]},
+      { section: "👤 チャンネル絞り込み", items: [
+        { icon: "🔎", text: "キーワードでチャンネルを<strong>フィルタリング</strong>できます。" },
+        { icon: "✅", text: "チャンネルは<strong>複数選択可能</strong>です。もう一度クリックすると選択解除。" },
+      ]},
+      { section: "📊 並び順について", items: [
+        { icon: "🔥", text: "<strong>みんなのクリック数</strong>が多い曲・チャンネルほど上位に表示されます。" },
+        { icon: "⭐", text: "検索ワードが曲名の<strong>独立した単語</strong>として含まれている場合、より上位に表示されます。" },
+      ]},
+    ],
   },
   zh: {
     badge: "歌單搜尋系統",
     title: "🎤 VTuber 歌單搜尋系統",
     lblSong: "歌名",
+    songHint: "※ 請確認輸入歌名是否正確",
     lblChannel: "頻道篩選",
     searchBtn: "🔍 開始搜尋",
     listBtn: "📋 顯示所有頻道",
     allVtubers: "🎵 全部頻道",
     searching: "搜尋中...",
     noResult: "😢 快取中找不到這首歌。",
+    noResultTips: [
+      "🔍 試試縮短搜尋詞（例：「夜に駆ける」→「夜に」）",
+      "✏️ 確認歌名的格式是否正確（漢字、片假名、英文拼法等）",
+      "🎛️ 確認模式是否限縮了範圍？切換到「全部」試試",
+      "🔤 也可以試試羅馬拼音搜尋（例：yorunikakeru）",
+      "🔄 資料可能未同步，試試重新同步雲端資料",
+    ],
     totalResults: (c, ch) => `共 ${c} 筆，分佈於 ${ch} 個頻道`,
     syncLabel: "同步雲端資料",
     syncing: "同步中...",
@@ -734,17 +1267,49 @@ const LANG = {
     syncFail: "同步失敗",
     resultsTitle: "搜尋結果",
     channelListTitle: "頻道名單",
+    modeAll: "🎵 全部",
+    modeSetlist: "🎤 歌枠",
+    modeCover: "🎵 Cover",
+    helpTitle: "使用說明",
+    helpContent: [
+      { section: "🔍 基本操作", items: [
+        { icon: "1️⃣", text: "輸入<strong>歌名</strong>後按搜尋按鈕或 Enter 鍵搜尋。" },
+        { icon: "2️⃣", text: "點擊結果中的歌曲，會直接開啟 YouTube <strong>從該歌曲的時間點</strong>播放（僅歌枠）。" },
+        { icon: "3️⃣", text: "按<strong>同步雲端資料</strong>按鈕取得最新資料，第一次使用時會自動同步。" },
+      ]},
+      { section: "🎛️ 搜尋模式", items: [
+        { icon: "🎵", text: "<strong>全部</strong>：同時搜尋歌枠和 Cover，Cover 會排在最上面。" },
+        { icon: "🎤", text: "<strong>歌枠</strong>：只搜尋直播歌枠。" },
+        { icon: "🎵", text: "<strong>Cover</strong>：只搜尋翻唱影片。" },
+      ]},
+      { section: "👤 頻道篩選", items: [
+        { icon: "🔎", text: "可以用關鍵字<strong>過濾頻道</strong>清單。" },
+        { icon: "✅", text: "支援<strong>多選頻道</strong>，再次點擊已選的頻道可取消選取。" },
+      ]},
+      { section: "📊 排序說明", items: [
+        { icon: "🔥", text: "<strong>所有人的點擊數</strong>越多的歌曲和頻道會排越前面。" },
+        { icon: "⭐", text: "搜尋詞完整出現在歌名中（前後沒有其他文字）時排序更高。" },
+      ]},
+    ],
   },
   en: {
     badge: "VTuber Search",
     title: "🎤 VTuber Setlist Search",
     lblSong: "Song Name",
+    songHint: "※ Please check the song title format",
     lblChannel: "Filter Channel",
     searchBtn: "🔍 Search",
     listBtn: "📋 Channel List",
     allVtubers: "🎵 All Channels",
     searching: "Searching...",
     noResult: "😢 No results found in cache.",
+    noResultTips: [
+      "🔍 Try a shorter search term (e.g. \"夜に駆ける\" → \"夜に\")",
+      "✏️ Double-check the song title format (kanji, katakana, spelling, etc.)",
+      "🎛️ Check your search mode — try switching to \"All\"",
+      "🔤 You can also try searching with romaji (e.g. yorunikakeru)",
+      "🔄 Data may be outdated — try syncing again",
+    ],
     totalResults: (c, ch) => `${c} results across ${ch} channels`,
     syncLabel: "Sync cloud data",
     syncing: "Syncing...",
@@ -752,6 +1317,30 @@ const LANG = {
     syncFail: "Sync failed",
     resultsTitle: "Results",
     channelListTitle: "Channel List",
+    modeAll: "🎵 All",
+    modeSetlist: "🎤 Setlist",
+    modeCover: "🎵 Cover",
+    helpTitle: "How to Use",
+    helpContent: [
+      { section: "🔍 Basic Usage", items: [
+        { icon: "1️⃣", text: "Type a <strong>song name</strong> and press Search or Enter." },
+        { icon: "2️⃣", text: "Click a result to open YouTube <strong>starting from that song's timestamp</strong> (setlist only)." },
+        { icon: "3️⃣", text: "Press <strong>Sync</strong> to fetch the latest data. First-time sync is automatic." },
+      ]},
+      { section: "🎛️ Search Modes", items: [
+        { icon: "🎵", text: "<strong>All</strong>: Search both setlists and covers. Covers appear at the top." },
+        { icon: "🎤", text: "<strong>Setlist</strong>: Search live stream setlists only." },
+        { icon: "🎵", text: "<strong>Cover</strong>: Search cover videos only." },
+      ]},
+      { section: "👤 Channel Filter", items: [
+        { icon: "🔎", text: "Type keywords to <strong>filter the channel list</strong>." },
+        { icon: "✅", text: "<strong>Multi-select</strong> is supported. Click again to deselect." },
+      ]},
+      { section: "📊 Sort Order", items: [
+        { icon: "🔥", text: "Songs and channels with more <strong>clicks from all users</strong> rank higher." },
+        { icon: "⭐", text: "Songs where the search term appears as a <strong>standalone word</strong> rank higher." },
+      ]},
+    ],
   }
 };
 
@@ -777,6 +1366,31 @@ function applyLang() {
   document.getElementById('searchBtn').textContent = l.searchBtn;
   document.getElementById('listBtn').textContent = l.listBtn;
   document.getElementById('syncLabel').textContent = l.syncLabel;
+  document.getElementById('modeAll').textContent = l.modeAll;
+  document.getElementById('modeSetlist').textContent = l.modeSetlist;
+  document.getElementById('modeCover').textContent = l.modeCover;
+  document.getElementById('songHint').textContent = l.songHint;
+  renderHelp();
+}
+
+function toggleHelp() {
+  document.getElementById('helpModal').classList.toggle('visible');
+}
+
+function renderHelp() {
+  const l = L();
+  document.getElementById('helpTitle').textContent = l.helpTitle;
+  const body = document.getElementById('helpBody');
+  body.innerHTML = l.helpContent.map(sec => `
+    <div class="help-section">
+      <div class="help-section-title">${sec.section}</div>
+      ${sec.items.map(item => `
+        <div class="help-item">
+          <span class="help-icon">${item.icon}</span>
+          <span>${item.text}</span>
+        </div>`).join('')}
+    </div>
+  `).join('');
 }
 
 // ============================================================
@@ -861,6 +1475,8 @@ async function syncData() {
     const vtuberRaw = await fetchWithProgress(DROPBOX_VTUBERS, 'vtuber_list.txt');
     showProgress('setlist_cache.txt 下載中...', 0);
     const setlistRaw = await fetchWithProgress(DROPBOX_SETLIST, 'setlist_cache.txt');
+    showProgress('cover_cache.txt 下載中...', 0);
+    const coverRaw = await fetchWithProgress(DROPBOX_COVER, 'cover_cache.txt');
 
     // Parse vtubers
     vtuberData = {};
@@ -871,16 +1487,20 @@ async function syncData() {
       }
     });
 
-    // Parse setlist lines (keep in memory only, don't store raw 27MB in localStorage)
+    // Parse setlist & cover lines (keep in memory only)
     setlistLines = setlistRaw.split('\n').filter(l => l.trim());
+    // 9欄フォーマットにはromaji欄があるのでkuromojiキャッシュは不要
+    // 7欄の旧データがある場合のみ実行
+    const hasOldFormat = setlistLines.some(l => l.split(' | ').length === 7);
+    if (hasOldFormat && kuromojiTokenizer) buildRomajiCache();
+    coverLines   = coverRaw.split('\n').filter(l => l.trim());
 
-    // Only store vtuberData (small) and sync time in localStorage
-    // setlistLines is too large for localStorage (27MB > 5MB limit)
+    // Only store vtuberData (small) in localStorage
     localStorage.setItem('vtuberData', JSON.stringify(vtuberData));
     localStorage.setItem('syncTime', Date.now());
-    // Store a flag so we know sync succeeded
     localStorage.setItem('syncSuccess', '1');
 
+    await refreshClickCounts(); // clickCounts + channelTotalClicks
     renderChannelChips();
     hideStatus();
     btn.classList.remove('syncing');
@@ -922,20 +1542,22 @@ function renderChannelChips() {
 
   // All chip
   const allChip = document.createElement('button');
-  allChip.className = 'channel-chip' + (selectedChannelId === 'ALL' ? ' selected' : '');
+  allChip.className = 'channel-chip' + (selectedChannelIdss.has('ALL') ? ' selected' : '');
+  allChip.dataset.id = 'ALL';
   allChip.textContent = L().allVtubers;
   allChip.onclick = () => selectChannel('ALL', allChip);
   container.appendChild(allChip);
 
   // Individual channels
   const sorted = Object.entries(vtuberData).sort((a, b) =>
-    a[1].name.localeCompare(b[1].name)
+    (channelTotalClicks[b[0]] || 0) - (channelTotalClicks[a[0]] || 0)
   );
 
   for (const [id, info] of sorted) {
     if (filter && !info.name.toLowerCase().includes(filter)) continue;
     const chip = document.createElement('button');
-    chip.className = 'channel-chip' + (selectedChannelId === id ? ' selected' : '');
+    chip.className = 'channel-chip' + (selectedChannelIdss.has(id) ? ' selected' : '');
+    chip.dataset.id = id;
     chip.textContent = info.name;
     chip.title = info.name;
     chip.onclick = () => selectChannel(id, chip);
@@ -944,9 +1566,23 @@ function renderChannelChips() {
 }
 
 function selectChannel(id, el) {
-  selectedChannelId = id;
-  document.querySelectorAll('.channel-chip').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
+  if (id === 'ALL') {
+    // 點全選 → 清除其他選擇
+    selectedChannelIdss = new Set(['ALL']);
+  } else {
+    selectedChannelIdss.delete('ALL');
+    if (selectedChannelIdss.has(id)) {
+      selectedChannelIdss.delete(id);
+      if (selectedChannelIdss.size === 0) selectedChannelIdss.add('ALL'); // 全部取消 → 回到全選
+    } else {
+      selectedChannelIdss.add(id);
+    }
+  }
+  // 更新 chip 樣式
+  document.querySelectorAll('.channel-chip').forEach(c => {
+    const chipId = c.dataset.id;
+    c.classList.toggle('selected', selectedChannelIdss.has(chipId));
+  });
 }
 
 function filterChannels() {
@@ -978,20 +1614,75 @@ function doSearch() {
     const results = [];
     const seen = new Set();
 
-    for (const line of setlistLines) {
-      const parts = line.split(' | ');
-      if (parts.length !== 7) continue;
-      const [cid, vUrl, , , sec, , song] = parts.map(s => s.trim());
+    // 搜尋 setlist
+    if (searchMode === 'all' || searchMode === 'setlist') {
+      for (const line of setlistLines) {
+        const parts = line.split(' | ');
+        if (parts.length !== 7 && parts.length !== 9) continue;
+        const cid    = parts[0].trim();
+        const vUrl   = parts[1].trim();
+        const sec    = parts[4].trim();
+        const song   = parts[6].trim();
+        const date   = parts.length === 9 ? parts[7].trim() : '';
+        const romaji = parts.length === 9 ? parts[8].trim() : '';
 
-      if (selectedChannelId !== 'ALL' && cid !== selectedChannelId) continue;
-      if (!cleanText(song).includes(queryClean)) continue;
+        if (!selectedChannelIdss.has('ALL') && !selectedChannelIdss.has(cid)) continue;
 
-      const finalUrl = vUrl.includes('?') ? `${vUrl}&t=${sec}s` : `${vUrl}?t=${sec}s`;
-      if (!seen.has(finalUrl)) {
-        seen.add(finalUrl);
-        results.push({ cid, url: finalUrl, song });
+        // 文字匹配
+        const isTextMatch = cleanText(song).includes(queryClean);
+
+        // 羅馬拼音匹配：文字匹配和羅馬字匹配都跑，取最佳
+        let rIdx = -1;
+        if (romaji && romaji.indexOf(queryClean) !== -1) {
+          const ri = romaji.indexOf(queryClean);
+          const before = romaji[ri - 1], after = romaji[ri + queryClean.length];
+          if (!(before && /[a-z]/i.test(before)) && !(after && /[a-z]/i.test(after))) {
+            rIdx = ri;
+          }
+        } else if (!isTextMatch) {
+          rIdx = romajiMatch(query, song);
+        }
+
+        if (!isTextMatch && rIdx === -1) continue;
+
+        const finalUrl = vUrl.includes('?') ? `${vUrl}&t=${sec}s` : `${vUrl}?t=${sec}s`;
+        if (!seen.has(finalUrl)) {
+          seen.add(finalUrl);
+          // 文字匹配優先，羅馬字匹配為輔（tier 3）
+          const score = isTextMatch ? scoreResult(query, song) : { tier: 3, pos: rIdx };
+          results.push({ cid, url: finalUrl, song, date, type: 'setlist', score });
+        }
       }
     }
+
+    // 搜尋 cover
+    if (searchMode === 'all' || searchMode === 'cover') {
+      for (const line of coverLines) {
+        const parts = line.split(' | ');
+        if (parts.length !== 5) continue;
+        const [cid, vUrl, , song] = parts.map(s => s.trim());
+        if (!selectedChannelIdss.has('ALL') && !selectedChannelIdss.has(cid)) continue;
+        if (!cleanText(song).includes(queryClean)) continue;
+        if (!seen.has(vUrl)) {
+          seen.add(vUrl);
+          results.push({ cid, url: vUrl, song, type: 'cover', score: { tier: 0, pos: 0 } });
+        }
+      }
+    }
+
+    // 排序：cover 置頂 → 熱門度（點擊數）→ tier → pos
+    function getVideoIdFromUrl(url) {
+      const m = url.match(/(?:v=|youtu\.be\/)([0-9A-Za-z_-]{11})/);
+      return m ? m[1] : url;
+    }
+    results.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'cover' ? -1 : 1;
+      const clickA = clickCounts[getVideoIdFromUrl(a.url)] || 0;
+      const clickB = clickCounts[getVideoIdFromUrl(b.url)] || 0;
+      if (clickA !== clickB) return clickB - clickA; // 熱門度高排前面
+      if (a.score.tier !== b.score.tier) return a.score.tier - b.score.tier;
+      return a.score.pos - b.score.pos;
+    });
 
     hideStatus();
     renderResults(results);
@@ -1011,13 +1702,16 @@ function renderResults(results) {
     body.innerHTML = `<div class="empty-state">
       <span class="emoji">😢</span>
       <p>${L().noResult}</p>
+      <div class="no-result-tips">
+        ${L().noResultTips.map(t => `<div class="no-result-tip">${t}</div>`).join('')}
+      </div>
     </div>`;
     return;
   }
 
   // Group by channel
   const grouped = {};
-  for (const r of results.sort((a, b) => a.cid.localeCompare(b.cid))) {
+  for (const r of results) {
     if (!grouped[r.cid]) grouped[r.cid] = [];
     grouped[r.cid].push(r);
   }
@@ -1027,9 +1721,23 @@ function renderResults(results) {
   title.textContent = L().resultsTitle;
   count.textContent = L().totalResults(results.length, channelCount);
 
+  // 頻道依總點擊數排序（cover 頻道永遠在前）
+  function getVideoIdFromUrl(url) {
+    const m = url.match(/(?:v=|youtu\.be\/)([0-9A-Za-z_-]{11})/);
+    return m ? m[1] : url;
+  }
+  const sortedGroups = Object.entries(grouped).sort(([, aItems], [, bItems]) => {
+    const aIsCover = aItems[0].type === 'cover';
+    const bIsCover = bItems[0].type === 'cover';
+    if (aIsCover !== bIsCover) return aIsCover ? -1 : 1;
+    const aClicks = aItems.reduce((s, i) => s + (clickCounts[getVideoIdFromUrl(i.url)] || 0), 0);
+    const bClicks = bItems.reduce((s, i) => s + (clickCounts[getVideoIdFromUrl(i.url)] || 0), 0);
+    return bClicks - aClicks;
+  });
+
   body.innerHTML = '';
   let delay = 0;
-  for (const [cid, items] of Object.entries(grouped)) {
+  for (const [cid, items] of sortedGroups) {
     const info = vtuberData[cid] || { name: `Unknown (${cid})`, url: '' };
     const initial = info.name.charAt(0).toUpperCase();
 
@@ -1037,13 +1745,38 @@ function renderResults(results) {
     group.className = 'channel-group';
     group.style.animationDelay = `${delay}ms`;
 
-    const songsHtml = items.map((item, i) => `
-      <a class="song-item" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">
-        <span class="song-num">${i + 1}</span>
-        <span class="song-name">${escapeHtml(item.song)}</span>
-        <span class="song-link-icon">→</span>
-      </a>
-    `).join('');
+    const isCoverGroup = items.every(i => i.type === 'cover');
+    const isSetlistGroup = items.every(i => i.type === 'setlist');
+
+    const songsHtml = items.map((item, i) => {
+      let badge = '';
+      // Romaji match indicator（最前面）
+      if (item.type === 'setlist' && item.score && item.score.tier === 3) {
+        badge = `<span class="romaji-badge">ローマ字</span>`;
+      }
+      // Cover badge
+      if (item.type === 'cover') {
+        badge += `<span class="cover-badge">Cover</span>`;
+      }
+      // setlist badge
+      if (item.type === 'setlist') {
+        badge += `<span class="setlist-badge">歌枠</span>`;
+      }
+      const vid = (item.url.match(/(?:v=|youtu\.be\/)([0-9A-Za-z_-]{11})/) || [])[1] || '';
+      const dateStr = item.date
+        ? `<span class="song-date">${item.date.slice(0,4)}.${item.date.slice(4,6)}.${item.date.slice(6,8)}</span>`
+        : '';
+      return `
+        <a class="song-item" href="${escapeHtml(item.url)}" target="_blank" rel="noopener" onclick="recordClick('${vid}','${item.cid}')">
+          <span class="song-num">${i + 1}</span>
+          <span class="song-name">${escapeHtml(item.song)}</span>
+          ${badge}
+          ${dateStr}
+          <span class="song-link-icon">→</span>
+        </a>`;
+    }).join('');
+
+    if (isCoverGroup) group.classList.add('is-cover');
 
     group.innerHTML = `
       <div class="channel-header">
@@ -1066,7 +1799,7 @@ function showAllChannels() {
   const count = document.getElementById('resultsCount');
 
   const sorted = Object.entries(vtuberData).sort((a, b) =>
-    a[1].name.localeCompare(b[1].name)
+    (channelTotalClicks[b[0]] || 0) - (channelTotalClicks[a[0]] || 0)
   );
 
   section.style.display = 'block';
@@ -1115,8 +1848,9 @@ applyLang();
 loadFromCache();
 
 // setlistLines 無法存入 localStorage，每次開頁面都需要重新下載
-// 但 vtuberData 可以從 cache 讀取，省去重新下載小檔
 syncData();
+// 背景載入點擊數
+refreshClickCounts();
 </script>
 </body>
 </html>
