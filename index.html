@@ -1547,13 +1547,16 @@ function doSearch() {
         // 文字匹配
         const isTextMatch = cleanText(song).includes(queryClean);
 
-        // 羅馬拼音匹配：直接用第9欄的 romaji
+        // 羅馬拼音匹配：romaji欄は日文→ローマ字、英数字・記号はそのまま
         let rIdx = -1;
-        if (romaji && romaji.indexOf(queryClean) !== -1) {
-          const ri = romaji.indexOf(queryClean);
-          const before = romaji[ri - 1], after = romaji[ri + queryClean.length];
-          if (!(before && /[a-z]/i.test(before)) && !(after && /[a-z]/i.test(after))) {
-            rIdx = ri;
+        if (romaji) {
+          const romajiLower = romaji.toLowerCase();
+          const ri = romajiLower.indexOf(query.toLowerCase());
+          if (ri !== -1) {
+            const before = romajiLower[ri - 1], after = romajiLower[ri + query.length];
+            if (!(before && /[a-z]/i.test(before)) && !(after && /[a-z]/i.test(after))) {
+              rIdx = ri;
+            }
           }
         }
 
