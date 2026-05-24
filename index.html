@@ -948,9 +948,9 @@
 // DATA LAYER
 // ============================================================
 
-const DROPBOX_SETLIST = "https://media.githubusercontent.com/media/c2940744-crypto/vtuber-song-search/refs/heads/main/setlist_cache.txt";
+const DROPBOX_SETLIST = "https://media.githubusercontent.com/media/c2940744-crypto/vtuber-song-search/refs/heads/main/setlist_cache.txt.gz";
 const DROPBOX_VTUBERS = "https://media.githubusercontent.com/media/c2940744-crypto/vtuber-song-search/refs/heads/main/vtuber_list.txt";
-const DROPBOX_COVER   = "https://media.githubusercontent.com/media/c2940744-crypto/vtuber-song-search/refs/heads/main/cover_cache.txt";
+const DROPBOX_COVER   = "https://media.githubusercontent.com/media/c2940744-crypto/vtuber-song-search/refs/heads/main/cover_cache.txt.gz";
 
 let vtuberData = {};   // { channelId: { name, url } }
 let setlistLines = []; // raw lines from setlist_cache
@@ -1362,7 +1362,29 @@ async function fetchWithProgress(url, label) {
         allChunks.set(chunk, position);
         position += chunk.length;
       }
-      const text = new TextDecoder('utf-8').decode(allChunks);
+
+      // gzip 解壓（.gz 檔案）
+      let text;
+      if (url.endsWith('.gz')) {
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+        const reader2 = ds.readable.getReader();
+        writer.write(allChunks);
+        writer.close();
+        const outChunks = [];
+        while (true) {
+          const { done, value } = await reader2.read();
+          if (done) break;
+          outChunks.push(value);
+        }
+        const totalLen = outChunks.reduce((s, c) => s + c.length, 0);
+        const outArr = new Uint8Array(totalLen);
+        let pos = 0;
+        for (const c of outChunks) { outArr.set(c, pos); pos += c.length; }
+        text = new TextDecoder('utf-8').decode(outArr);
+      } else {
+        text = new TextDecoder('utf-8').decode(allChunks);
+      }
       if (text.length > 10) return text;
 
     } catch(e) {
